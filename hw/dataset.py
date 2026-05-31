@@ -1,9 +1,6 @@
-from __future__ import annotations
-
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
 
 from PIL import Image
 from torch.utils.data import Dataset
@@ -32,13 +29,13 @@ class MathVQASample:
     source: str = "unknown"
 
 
-def load_jsonl(path: str | Path) -> list[dict[str, Any]]:
+def load_jsonl(path):
     """Load a jsonl file.
 
     This helper is provided; you may use or replace it.
     """
     path = Path(path)
-    rows: list[dict[str, Any]] = []
+    rows = []
     with path.open("r", encoding="utf-8") as f:
         for line_no, line in enumerate(f, start=1):
             line = line.strip()
@@ -51,14 +48,14 @@ def load_jsonl(path: str | Path) -> list[dict[str, Any]]:
     return rows
 
 
-def sanitize_question(text: str) -> str:
+def sanitize_question(text):
     """Remove image/control tokens that must not appear in raw questions."""
     for token in ("<image>", "<image_start>", "<image_end>"):
         text = text.replace(token, "")
     return " ".join(text.split())
 
 
-class MathVQADataset(Dataset[MathVQASample]):
+class MathVQADataset(Dataset):
     """Dataset for manifest-based visual mathematical QA.
 
     Expected manifest fields:
@@ -73,25 +70,30 @@ class MathVQADataset(Dataset[MathVQASample]):
         - return MathVQASample.
     """
 
-    def __init__(
-        self,
-        manifest_path: str | Path,
-        split: str = "train",
-        max_samples: int | None = None,
-    ) -> None:
+    def __init__(self, manifest_path, split="train", max_samples=None):
         self.manifest_path = Path(manifest_path)
         self.root = self.manifest_path.parent
         self.split = split
         self.max_samples = max_samples
 
-        # TODO: implement loading/filtering.
-        # Hint: use load_jsonl(self.manifest_path).
-        raise NotImplementedError("Implement MathVQADataset.__init__")
+        rows = load_jsonl(self.manifest_path)
+        rows = [row for row in rows if row.get("split") == split]
+        if max_samples is not None:
+            rows = rows[:max_samples]
+        self.rows = rows
 
-    def __len__(self) -> int:
-        # TODO: return number of filtered rows.
-        raise NotImplementedError("Implement MathVQADataset.__len__")
+    def __len__(self):
+        return len(self.rows)
 
-    def __getitem__(self, idx: int) -> MathVQASample:
-        # TODO: construct and return MathVQASample.
-        raise NotImplementedError("Implement MathVQADataset.__getitem__")
+    def __getitem__(self, idx):
+        row = self.rows[idx]
+        image = Image.open(self.root / row["image"]).convert("RGB")
+        return MathVQASample(
+            id=row["id"],
+            image=image,
+            question=sanitize_question(row["question"]),
+            options=list(row["options"]),
+            answer=row["answer"],
+            subject=row["subject"],
+            source=row.get("source", "unknown"),
+        )
